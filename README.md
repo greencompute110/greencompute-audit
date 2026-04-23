@@ -32,7 +32,7 @@ If math diverges across multiple epochs, you have on-chain evidence of validator
 ## Install
 
 ```bash
-git clone https://github.com/greenference/greencompute-audit.git
+git clone https://github.com/greencompute110/greencompute-audit.git
 cd greencompute-audit
 cp .env.example .env     # edit to point at your subtensor + validator
 docker compose up -d
@@ -122,7 +122,7 @@ If anything diverges, the auditor flags it. Since the validator committed the ha
 
 ## Source-of-truth sync
 
-`audit/replay.py` is a deliberate **port** of the validator's `ScoreEngine` from [greencompute-api](https://github.com/greenference/greencompute-api) at:
+`audit/replay.py` is a deliberate **port** of the validator's `ScoreEngine` from [greencompute-api](https://github.com/greencompute110/greencompute-api) at:
 
 `services/validator/src/greencompute_validator/domain/scoring.py`
 
