@@ -118,7 +118,7 @@ def audit_new_epochs(chain: ChainClient, api: ValidatorClient) -> int:
 def main(once: bool, loop: bool, epoch: str | None, verbose: bool) -> None:
     _setup_logging(verbose)
     subtensor_url = os.environ.get("SUBTENSOR_URL", "wss://entrypoint-finney.opentensor.ai:443/")
-    # Greenference netuid: 110 on mainnet (finney), 16 on testnet. Default to
+    # GreenCompute netuid: 110 on mainnet (finney), 16 on testnet. Default to
     # mainnet since that's what most auditors want to watch; testnet is an
     # explicit NETUID=16 override.
     netuid = int(os.environ.get("NETUID", "110"))
