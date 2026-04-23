@@ -1,6 +1,6 @@
 # greenference-audit
 
-Independent verifier for **Green Compute** (Bittensor subnet 16).
+Independent verifier for **Green Compute** — Bittensor subnet **110 on mainnet**, **16 on testnet**.
 
 Any validator, miner, or observer can run this to check that the subnet's
 owner validator is scoring miners honestly and submitting truthful weights
@@ -10,9 +10,9 @@ against on-chain SHA256 commitments.
 
 ## What this does
 
-For each Bittensor epoch (every 360 blocks ≈ 72 min on netuid 16):
+For each Bittensor epoch (every 360 blocks ≈ 72 min, same tempo on both netuids):
 
-1. Queries the bittensor chain for the `Commitments.CommitmentOf(16, <epoch_end_block>)` hash committed by the validator.
+1. Queries the bittensor chain for the `Commitments.CommitmentOf(NETUID, <epoch_end_block>)` hash committed by the validator. NETUID = 110 on mainnet (default), 16 on testnet.
 2. Downloads the full audit report JSON from the validator's public endpoint.
 3. Recomputes `SHA256(canonical_json(report))` and asserts it matches the on-chain hash. **Tampering caught here.**
 4. Verifies the ed25519 signature on the report against the validator's published hotkey pubkey.
@@ -50,8 +50,14 @@ python -m audit --help
 `.env`:
 
 ```
-SUBTENSOR_URL=wss://entrypoint-finney.opentensor.ai:443/   # or your local subtensor
-NETUID=16
+# Mainnet (default):
+SUBTENSOR_URL=wss://entrypoint-finney.opentensor.ai:443/
+NETUID=110
+
+# Testnet (override):
+# SUBTENSOR_URL=wss://test.finney.opentensor.ai:443/
+# NETUID=16
+
 VALIDATOR_ENDPOINT=https://validator.green-compute.com
 AUDIT_INTERVAL_SECONDS=300                                  # how often to poll for new epochs
 ```
@@ -73,7 +79,8 @@ python -m audit --loop
 Check a specific epoch:
 
 ```bash
-python -m audit --epoch 16-1234560
+python -m audit --epoch 110-1234560   # mainnet epoch at block 1234560
+python -m audit --epoch 16-1234560    # testnet
 ```
 
 ## Exit codes
@@ -86,9 +93,9 @@ python -m audit --epoch 16-1234560
 ## Understanding the output
 
 ```
-epoch 16-1234560: ✓ hash matches on-chain, signature valid, weights replay-match (37 miners)
-epoch 16-1234920: ✗ HASH MISMATCH — on-chain SHA256=abc... report SHA256=def...
-epoch 16-1235280: ⚠ math diverge — validator claims 0.234 for 5F6WRq..., replay says 0.198 (Δ=0.036)
+epoch 110-1234560: ✓ hash matches on-chain, signature valid, weights replay-match (37 miners)
+epoch 110-1234920: ✗ HASH MISMATCH — on-chain SHA256=abc... report SHA256=def...
+epoch 110-1235280: ⚠ math diverge — validator claims 0.234 for 5F6WRq..., replay says 0.198 (Δ=0.036)
 ```
 
 ## How this fits in the subnet
