@@ -91,6 +91,40 @@ epoch 16-1234920: ✗ HASH MISMATCH — on-chain SHA256=abc... report SHA256=def
 epoch 16-1235280: ⚠ math diverge — validator claims 0.234 for 5F6WRq..., replay says 0.198 (Δ=0.036)
 ```
 
+## How this fits in the subnet
+
+```
+validator (owner)                           auditor (you)
+  |                                              |
+  |-- every ~72 min (360 blocks):                |
+  |   1. compute scorecards                      |
+  |   2. publish WeightSnapshot                  |
+  |   3. set_weights() on Bittensor              |
+  |   4. generate AuditReport                    |
+  |   5. sha256(canonical_json)                  |
+  |   6. set_commitment(netuid, hash)  ←--- on chain ---→ auditor reads hash
+  |   7. sign + expose at /audit/reports/{epoch}    |
+  |                                              |-- fetch report over HTTP
+  +- (next epoch)                                |-- verify sha256 == on-chain
+                                                 |-- verify ed25519 signature
+                                                 |-- replay ScoreEngine formula
+                                                 +- diff vs claimed weights
+```
+
+If anything diverges, the auditor flags it. Since the validator committed the hash on-chain **before** publishing the report, they can't silently alter the report after the fact. They can only lie by either (a) committing a hash that doesn't match the raw data — catchable by replay — or (b) committing the hash of a report whose weights diverge from `ScoreEngine(probes, scorecards)` — also catchable.
+
+## Source-of-truth sync
+
+`audit/replay.py` is a deliberate **port** of the validator's `ScoreEngine` from [greenference-api](https://github.com/greenference/greenference-api) at:
+
+`services/validator/src/greenference_validator/domain/scoring.py`
+
+When the validator changes its scoring formula, this file must be updated in lockstep. The scoring constants (`SCORE_ALPHA`, `SCORE_BETA`, ...) are pinned here — if the validator changes them without shipping a coordinated auditor update, every epoch will diverge and this tool will flag it (which is the correct behavior — unilateral formula changes are suspicious).
+
+## Architecture
+
+Full subnet docs in [../README.md](../README.md).
+
 ## License
 
 Apache 2.0 — independent verification is a public good.
