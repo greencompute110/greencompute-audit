@@ -1,4 +1,4 @@
-# greenference-audit
+# greencompute-audit
 
 Independent verifier for **Green Compute** — Bittensor subnet **110 on mainnet**, **16 on testnet**.
 
@@ -32,8 +32,8 @@ If math diverges across multiple epochs, you have on-chain evidence of validator
 ## Install
 
 ```bash
-git clone https://github.com/greenference/greenference-audit.git
-cd greenference-audit
+git clone https://github.com/greenference/greencompute-audit.git
+cd greencompute-audit
 cp .env.example .env     # edit to point at your subtensor + validator
 docker compose up -d
 ```
@@ -122,9 +122,9 @@ If anything diverges, the auditor flags it. Since the validator committed the ha
 
 ## Source-of-truth sync
 
-`audit/replay.py` is a deliberate **port** of the validator's `ScoreEngine` from [greenference-api](https://github.com/greenference/greenference-api) at:
+`audit/replay.py` is a deliberate **port** of the validator's `ScoreEngine` from [greencompute-api](https://github.com/greenference/greencompute-api) at:
 
-`services/validator/src/greenference_validator/domain/scoring.py`
+`services/validator/src/greencompute_validator/domain/scoring.py`
 
 When the validator changes its scoring formula, this file must be updated in lockstep. The scoring constants (`SCORE_ALPHA`, `SCORE_BETA`, ...) are pinned here — if the validator changes them without shipping a coordinated auditor update, every epoch will diverge and this tool will flag it (which is the correct behavior — unilateral formula changes are suspicious).
 

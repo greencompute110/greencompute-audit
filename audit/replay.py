@@ -4,7 +4,7 @@ Do NOT refactor this against the upstream. If the upstream changes formula,
 this file must be updated in lockstep so auditors keep computing the same
 numbers the validator claims to compute.
 
-Source of truth: greenference-api/services/validator/src/greenference_validator/domain/scoring.py
+Source of truth: greencompute-api/services/validator/src/greencompute_validator/domain/scoring.py
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from statistics import median
 from typing import Any
 
 
-# Must mirror greenference_validator.config.settings — the validator publishes
+# Must mirror greencompute_validator.config.settings — the validator publishes
 # these in its config; auditors pin them here for deterministic replay.
 SCORE_ALPHA = 1.0
 SCORE_BETA = 1.3

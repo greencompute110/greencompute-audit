@@ -1,4 +1,4 @@
-"""CLI entry point for greenference-audit."""
+"""CLI entry point for greencompute-audit."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from audit.fetch import ValidatorClient
 from audit.replay import replay_scoring
 from audit.verify import verify_report
 
-logger = logging.getLogger("greenference-audit")
+logger = logging.getLogger("greencompute-audit")
 
 EXIT_CLEAN = 0
 EXIT_HASH_MISMATCH = 1
