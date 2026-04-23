@@ -1,0 +1,14 @@
+services:
+  auditor:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      SUBTENSOR_URL: "${SUBTENSOR_URL:-wss://entrypoint-finney.opentensor.ai:443/}"
+      NETUID: "${NETUID:-16}"
+      VALIDATOR_ENDPOINT: "${VALIDATOR_ENDPOINT:-https://validator.green-compute.com}"
+      AUDIT_INTERVAL_SECONDS: "${AUDIT_INTERVAL_SECONDS:-300}"
+    command: >
+      sh -lc "pip install -e . && python -m audit --loop"
+    restart: unless-stopped
