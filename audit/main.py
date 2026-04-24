@@ -117,7 +117,10 @@ def audit_new_epochs(chain: ChainClient, api: ValidatorClient) -> int:
 @click.option("-v", "--verbose", is_flag=True, help="Debug logging")
 def main(once: bool, loop: bool, epoch: str | None, verbose: bool) -> None:
     _setup_logging(verbose)
-    subtensor_url = os.environ.get("SUBTENSOR_URL", "wss://entrypoint-finney.opentensor.ai:443/")
+    # Must be an archive endpoint. See .env.example for details — lite nodes
+    # prune state after ~256 blocks and each epoch's commitment overwrites the
+    # previous one, so historical verification needs state-at-block queries.
+    subtensor_url = os.environ.get("SUBTENSOR_URL", "wss://archive.chain.opentensor.ai:443/")
     # GreenCompute netuid: 110 on mainnet (finney), 16 on testnet. Default to
     # mainnet since that's what most auditors want to watch; testnet is an
     # explicit NETUID=16 override.

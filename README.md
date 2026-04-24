@@ -50,8 +50,8 @@ python -m audit --help
 `.env`:
 
 ```
-# Mainnet (default):
-SUBTENSOR_URL=wss://entrypoint-finney.opentensor.ai:443/
+# Mainnet (default) — archive endpoint (required, see note below):
+SUBTENSOR_URL=wss://archive.chain.opentensor.ai:443/
 NETUID=110
 
 # Testnet (override):
@@ -61,6 +61,17 @@ NETUID=110
 VALIDATOR_ENDPOINT=https://validator.green-compute.com
 AUDIT_INTERVAL_SECONDS=300                                  # how often to poll for new epochs
 ```
+
+### Why an archive endpoint (not a lite node)
+
+Each epoch, the validator calls `set_commitment(netuid, sha256)` which **overwrites** the previous commitment in the chain's `Commitments.CommitmentOf` map. To verify a past report you have to query the commitment **at the historical block** the validator posted it, which is a state-at-block query. Lite nodes prune state after ~256 blocks (~30 min) and can't answer those queries — miss a single polling window with a lite node and you lose the ability to verify any commitment from the gap.
+
+Two ways to get archive access:
+
+1. **Public archive** (recommended): `wss://archive.chain.opentensor.ai:443/` — run by the Opentensor Foundation, free, no setup. This is what the default `.env.example` points to.
+2. **Self-hosted archive**: ~1 TB disk (and growing), continuous sync bandwidth, full node uptime. Only worth it if you don't want to trust the public endpoint or need higher rate limits.
+
+The auditor itself is CPU-only (hashing + Python scoring replay). You do NOT need 1 TB of disk on the auditor machine — the archive node can be remote. A 2 vCPU / 4 GB RAM / 40 GB disk VPS is enough (Hetzner CX22, Oracle Always-Free, etc.).
 
 ## Usage
 
