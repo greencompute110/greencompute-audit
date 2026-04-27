@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+build/
+dist/
+.venv/
+venv/
+
+# Local config / secrets
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# Audit-specific
+audit_state/
+*.log
