@@ -132,6 +132,26 @@ If you want the auditor to keep itself current with upstream changes, run a peri
 
 Skip this if you'd rather upgrade on your own cadence.
 
+## Watching all validators' weight setting
+
+A bundled utility shows every validator (vpermit=True) on the netuid, their last weight-set block, age, top weight targets, and flags self-burn / staleness.
+
+```bash
+# One-shot snapshot
+docker compose run --rm --entrypoint python auditor -m audit.watch
+
+# Continuous (refresh every 60s)
+docker compose run --rm --entrypoint python auditor -m audit.watch --watch
+
+# Testnet
+docker compose run --rm --entrypoint python auditor -m audit.watch --netuid 16
+```
+
+Useful for spotting:
+- Validators that haven't updated weights in hours (stale → not really validating)
+- Self-burn patterns (all weight on the validator's own uid → emission burn)
+- Validators concentrating weight on a single uid vs. a real distribution
+
 ## Optional: independent weight setting (Chutes-style)
 
 By default this auditor is **purely read-only** — it verifies SHA256 anchors, signatures, and replays scoring math. No keys are needed, nothing is transmitted, nothing is signed. Many auditors will run it in this mode forever.
