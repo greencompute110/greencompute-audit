@@ -24,6 +24,7 @@ EXIT_MATH_DIVERGE = 2
 EXIT_NETWORK = 3
 
 STATE_FILE = Path(".audit_state")
+PUBLISHED_FILE = Path(".audit_published")  # last epoch we published weights for
 
 
 def _read_last_audited_epoch() -> int | None:
@@ -37,6 +38,19 @@ def _read_last_audited_epoch() -> int | None:
 
 def _write_last_audited_epoch(end_block: int) -> None:
     STATE_FILE.write_text(str(end_block))
+
+
+def _read_last_published_epoch() -> int | None:
+    if not PUBLISHED_FILE.exists():
+        return None
+    try:
+        return int(PUBLISHED_FILE.read_text().strip())
+    except Exception:
+        return None
+
+
+def _write_last_published_epoch(end_block: int) -> None:
+    PUBLISHED_FILE.write_text(str(end_block))
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -102,10 +116,13 @@ def audit_new_epochs(chain: ChainClient, api: ValidatorClient) -> int:
     from audit.weights import is_enabled as set_weights_is_enabled, submit_weights
 
     last_audited = _read_last_audited_epoch()
+    last_published = _read_last_published_epoch()
     reports = api.list_reports()
+    sorted_reports = sorted(reports, key=lambda x: x["epoch_end_block"])
     worst = EXIT_CLEAN
     last_clean_epoch_id: str | None = None
-    for r in sorted(reports, key=lambda x: x["epoch_end_block"]):
+    last_clean_end_block: int | None = None
+    for r in sorted_reports:
         end_block = r["epoch_end_block"]
         if last_audited is not None and end_block <= last_audited:
             continue
@@ -115,24 +132,42 @@ def audit_new_epochs(chain: ChainClient, api: ValidatorClient) -> int:
         if code == EXIT_CLEAN:
             _write_last_audited_epoch(end_block)
             last_clean_epoch_id = r["epoch_id"]
+            last_clean_end_block = end_block
 
-    # After auditing, optionally publish independent weights based on the
-    # most recent verified epoch. Only fires when explicitly opted-in via
-    # SET_WEIGHTS_ENABLED=true AND AUDITOR_HOTKEY_SECRET_SEED is set.
-    if last_clean_epoch_id and set_weights_is_enabled():
+    # Pick the epoch to publish weights for. Two cases trigger a publish:
+    #   (a) we just verified a fresh epoch this cycle
+    #   (b) SET_WEIGHTS_ENABLED was newly turned on and we have older
+    #       already-verified epochs in state but never published them
+    # Without (b), an auditor that flips SET_WEIGHTS_ENABLED=true on a
+    # caught-up state file would have to wait ~72 min for the next epoch.
+    target_epoch_id: str | None = last_clean_epoch_id
+    target_end_block: int | None = last_clean_end_block
+    if target_epoch_id is None and set_weights_is_enabled() and last_audited is not None:
+        if last_published is None or last_published < last_audited:
+            latest = next(
+                (r for r in reversed(sorted_reports) if r["epoch_end_block"] <= last_audited),
+                None,
+            )
+            if latest is not None:
+                target_epoch_id = latest["epoch_id"]
+                target_end_block = latest["epoch_end_block"]
+
+    if target_epoch_id and set_weights_is_enabled():
         try:
-            report = api.get_report(last_clean_epoch_id)
+            report = api.get_report(target_epoch_id)
             replayed = replay_scoring(report["report_json"])
             if replayed:
-                submit_weights(
+                ok = submit_weights(
                     subtensor_url=chain.subtensor_url,
                     netuid=chain.netuid,
                     weights_by_hotkey=replayed,
                 )
+                if ok and target_end_block is not None:
+                    _write_last_published_epoch(target_end_block)
             else:
-                logger.info("no replayed weights to publish for epoch %s", last_clean_epoch_id)
+                logger.info("no replayed weights to publish for epoch %s", target_epoch_id)
         except Exception:
-            logger.exception("weight publish step failed for epoch %s", last_clean_epoch_id)
+            logger.exception("weight publish step failed for epoch %s", target_epoch_id)
     return worst
 
 
