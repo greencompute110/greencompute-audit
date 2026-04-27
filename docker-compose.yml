@@ -1,8 +1,10 @@
 services:
   auditor:
-    image: python:3.12-slim
+    build: .
     working_dir: /app
     volumes:
+      # Bind-mount source so `git pull` updates take effect without rebuild
+      # (editable install). Comment this out if you want a hermetic image.
       - ./:/app
     environment:
       SUBTENSOR_URL: "${SUBTENSOR_URL:-wss://archive.chain.opentensor.ai:443/}"
@@ -13,6 +15,4 @@ services:
       SET_WEIGHTS_ENABLED: "${SET_WEIGHTS_ENABLED:-false}"
       AUDITOR_HOTKEY_SECRET_SEED: "${AUDITOR_HOTKEY_SECRET_SEED:-}"
       AUDITOR_WEIGHTS_VERSION_KEY: "${AUDITOR_WEIGHTS_VERSION_KEY:-0}"
-    command: >
-      sh -lc "pip install -e . && python -m audit --loop"
     restart: unless-stopped
