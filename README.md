@@ -10,7 +10,7 @@ Any validator, miner, or observer can run this to check that the subnet's owner 
 - **Optional weight-setting mode** (Chutes-style): if you're a registered validator on netuid 110, the auditor can publish its own `set_weights` extrinsic per cycle from independently replayed scoring data — keeping a dishonest owner validator in check.
 - **Wallet handling matches `btcli`**: you reference your wallet by `coldkey/hotkey` name; the wallet directory is bind-mounted **read-only** into the container; secrets never leave your host or appear in env vars.
 - **Set-and-forget**: `docker compose up -d` once → runs forever. No PM2/systemd/cron required.
-- **Hardware**: 1-2 vCPU, 2 GB RAM, 20 GB disk. CPU only. ~$5/mo VPS or Oracle's free tier.
+- **Hardware**: 8-16 CPU cores, 64 GB RAM, 1 TB disk, good bandwidth. CPU only — no GPU.
 
 ## What this does
 
@@ -89,7 +89,7 @@ Two ways to get archive access:
 1. **Public archive** (recommended): `wss://archive.chain.opentensor.ai:443/` — run by the Opentensor Foundation, free, no setup. This is what the default `.env.example` points to.
 2. **Self-hosted archive**: ~1 TB disk (and growing), continuous sync bandwidth, full node uptime. Only worth it if you don't want to trust the public endpoint or need higher rate limits.
 
-The auditor itself is CPU-only (hashing + Python scoring replay). You do NOT need 1 TB of disk on the auditor machine — the archive node can be remote. A 2 vCPU / 4 GB RAM / 40 GB disk VPS is enough (Hetzner CX22, Oracle Always-Free, etc.).
+The auditor itself is CPU-only (hashing + Python scoring replay). The 1 TB disk + 64 GB RAM target is sized to also host your own archive node alongside the audit container, so you don't depend on a third party's public endpoint for the chain queries the audit relies on.
 
 ## Operations
 
@@ -109,15 +109,15 @@ The same flags work natively if you skipped docker: `python -m audit --once`, et
 
 The auditor remembers the last successfully audited block in `audit_state/last_audited_epoch` (mounted volume). On restart it picks up where it left off — no double-checking, no missed epochs as long as the container runs at least once before the chain prunes (~256 blocks, ~30 min).
 
-### Resource usage
+### Hardware spec
 
-Steady state: ~50 MB RAM, single-digit % of one CPU core, ~5 MB/day disk for cached reports. No GPU. Suitable for the smallest VPS tier from any provider.
+- **CPU**: 8-16 cores
+- **RAM**: 64 GB
+- **Disk**: 1 TB SSD (sized to co-host an archive subtensor node alongside the auditor)
+- **Bandwidth**: stable, low-latency — the auditor talks to subtensor over WebSocket continuously
+- **No GPU** — auditor is pure-Python hash + score replay
 
-### Recommended hosts
-
-- **Oracle Cloud Always-Free** (ARM Ampere) — 4 vCPU / 24 GB RAM / 200 GB disk, free forever
-- **Hetzner Cloud CX22** — €4/mo, 2 vCPU / 4 GB / 40 GB
-- **Contabo VPS S** — $5/mo, 4 vCPU / 8 GB / 200 GB
+The auditor process itself is light (~50 MB RAM, <1% of a core). The big-box spec is so the same machine can run a full archive subtensor node, eliminating any dependency on third-party RPC endpoints for the verification path.
 
 ### Auto-updating (optional)
 
