@@ -6,6 +6,10 @@ services:
       # Bind-mount source so `git pull` updates take effect without rebuild
       # (editable install). Comment this out if you want a hermetic image.
       - ./:/app
+      # Read-only mount of the operator's Bittensor wallet directory.
+      # ONLY needed when SET_WEIGHTS_ENABLED=true. Override the host path
+      # with BITTENSOR_WALLET_DIR if your wallets live elsewhere.
+      - ${BITTENSOR_WALLET_DIR:-~/.bittensor}/wallets:/root/.bittensor/wallets:ro
     environment:
       SUBTENSOR_URL: "${SUBTENSOR_URL:-wss://archive.chain.opentensor.ai:443/}"
       NETUID: "${NETUID:-110}"
@@ -13,6 +17,7 @@ services:
       AUDIT_INTERVAL_SECONDS: "${AUDIT_INTERVAL_SECONDS:-300}"
       # Optional independent weight setting (off by default = read-only audit).
       SET_WEIGHTS_ENABLED: "${SET_WEIGHTS_ENABLED:-false}"
-      AUDITOR_HOTKEY_SECRET_SEED: "${AUDITOR_HOTKEY_SECRET_SEED:-}"
+      AUDITOR_COLDKEY_NAME: "${AUDITOR_COLDKEY_NAME:-}"
+      AUDITOR_HOTKEY_NAME: "${AUDITOR_HOTKEY_NAME:-default}"
       AUDITOR_WEIGHTS_VERSION_KEY: "${AUDITOR_WEIGHTS_VERSION_KEY:-0}"
     restart: unless-stopped

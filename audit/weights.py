@@ -11,19 +11,24 @@ Disabled by default. Read-only verification (`SET_WEIGHTS_ENABLED=false`)
 is the primary mode and requires no keys whatsoever.
 
 How keys are handled (security note for skeptical operators):
-- The auditor's `AUDITOR_HOTKEY_SECRET_SEED` is read from env at runtime
-  and used locally to sign extrinsics with `substrate-interface`. The seed
-  is NEVER transmitted anywhere — same threat model as Chutes' `audit.py`.
-- The seed corresponds to a hotkey YOU control. The validator being
-  audited never sees it, neither does the chain (only the resulting
-  signature, which is what set_weights expects).
-- Don't commit `.env` to git. Treat the seed file like a wallet.
+- Wallets live on disk at `~/.bittensor/wallets/<coldkey>/hotkeys/<hotkey>`
+  (standard Bittensor path). The auditor's docker-compose mounts that
+  directory READ-ONLY into the container at `/root/.bittensor/wallets`.
+- You pass the wallet IDENTIFIERS (coldkey/hotkey NAMES) via env vars,
+  not the secret material itself. The audit code reads the matching
+  wallet JSON file at runtime and constructs a Keypair locally.
+- Nothing is transmitted off-box. The validator being audited never sees
+  your wallet; no third party sees it.
+- Don't commit `.env` to git. The wallet files themselves stay outside
+  the repo, on the operator's host filesystem.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+from pathlib import Path
 
 from substrateinterface import Keypair, SubstrateInterface
 
@@ -44,25 +49,63 @@ def is_enabled() -> bool:
     }
 
 
-def _load_keypair() -> Keypair | None:
-    """Load the auditor's signing keypair from env.
+def _wallet_root() -> Path:
+    """Where wallets live inside the container.
 
-    Two ways to pass the seed:
-      AUDITOR_HOTKEY_SECRET_SEED=0x<hex>
-      AUDITOR_HOTKEY_SECRET_SEED=<bare hex without 0x>
-
-    Returns None if not configured — caller should treat as "weights not
-    set, audit-only mode".
+    Default `/root/.bittensor/wallets` matches the docker-compose bind mount
+    of the host's `~/.bittensor`. Override with AUDITOR_WALLET_PATH if you
+    have a non-standard layout.
     """
-    seed = os.environ.get("AUDITOR_HOTKEY_SECRET_SEED", "").strip()
-    if not seed:
+    return Path(
+        os.environ.get("AUDITOR_WALLET_PATH", "/root/.bittensor/wallets")
+    )
+
+
+def _load_keypair() -> Keypair | None:
+    """Load the auditor's signing keypair from a Bittensor wallet file.
+
+    Reads `~/.bittensor/wallets/<coldkey>/hotkeys/<hotkey>` (path adjustable
+    via AUDITOR_WALLET_PATH). The wallet JSON has a `secretSeed` field —
+    we hand that to `Keypair.create_from_seed()`.
+
+    `Keypair.create_from_uri(path)` is wrong here — it treats the string
+    as an Sr25519 derivation URI like `//Alice` and produces a fake
+    deterministic keypair. Use `create_from_seed` after reading the file.
+
+    Returns None if AUDITOR_COLDKEY_NAME isn't set — caller treats as
+    "weights not set, read-only mode".
+    """
+    coldkey = os.environ.get("AUDITOR_COLDKEY_NAME", "").strip()
+    hotkey = os.environ.get("AUDITOR_HOTKEY_NAME", "default").strip()
+    if not coldkey:
         return None
-    if seed.startswith("0x"):
-        seed = seed[2:]
+
+    wallet_file = _wallet_root() / coldkey / "hotkeys" / hotkey
+    if not wallet_file.is_file():
+        logger.error(
+            "wallet file not found: %s (mount your ~/.bittensor read-only into "
+            "the container; see docker-compose.yml + README)",
+            wallet_file,
+        )
+        return None
+
     try:
+        with wallet_file.open() as f:
+            data = json.load(f)
+        seed = (
+            data.get("secretSeed")
+            or data.get("privateKey")
+            or data.get("seed")
+            or data.get("private_key")
+        )
+        if not seed:
+            logger.error("no secretSeed/privateKey field in %s", wallet_file)
+            return None
+        if isinstance(seed, str) and seed.startswith("0x"):
+            seed = seed[2:]
         return Keypair.create_from_seed(seed)
     except Exception:
-        logger.exception("failed to construct keypair from AUDITOR_HOTKEY_SECRET_SEED")
+        logger.exception("failed to load keypair from %s", wallet_file)
         return None
 
 
@@ -87,7 +130,8 @@ def submit_weights(
     keypair = _load_keypair()
     if keypair is None:
         logger.warning(
-            "set_weights enabled but AUDITOR_HOTKEY_SECRET_SEED not set — skipping"
+            "set_weights enabled but AUDITOR_COLDKEY_NAME / AUDITOR_HOTKEY_NAME "
+            "not set or wallet file unreadable — skipping"
         )
         return False
 

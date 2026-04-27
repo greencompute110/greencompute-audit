@@ -102,27 +102,36 @@ For validators who want to push their **own** weight vector to the chain based o
 
 ### Requirements when enabling weight setting
 
-1. Your hotkey is **registered as a validator on the netuid** (mainnet 110 or testnet 16). `btcli subnet register --netuid 110 --wallet.name <coldkey> --wallet.hotkey <hotkey> --subtensor.network finney`.
-2. Your hotkey has enough stake to receive a validator permit. Check with `btcli subnet hyperparameters --netuid 110 --subtensor.network finney` (`min_allowed_weights` etc).
-3. The hotkey's `secretSeed` is available as `AUDITOR_HOTKEY_SECRET_SEED` in the auditor's `.env`.
+1. Your hotkey is **registered as a validator on the netuid** (mainnet 110 or testnet 16):
+   ```bash
+   btcli subnet register --netuid 110 --wallet.name <coldkey> --wallet.hotkey <hotkey> --subtensor.network finney
+   ```
+2. Your hotkey has enough stake to receive a validator permit. Check with `btcli subnet hyperparameters --netuid 110 --subtensor.network finney`.
+3. Your `~/.bittensor/wallets/<coldkey>/hotkeys/<hotkey>` file exists on the host (it does if you've used `btcli` to create it).
 
 ### How keys are handled (security)
 
-**Nothing is transmitted off your box.** Same model as Chutes' `audit.py`:
+**Nothing is transmitted off your box.** The pattern matches `btcli` itself:
 
-- The `secretSeed` lives in your local `.env` file (or container env). Read at runtime by `substrate-interface` to construct a Keypair locally.
+- Wallet files live on your **host** at `~/.bittensor/wallets/...` (standard Bittensor path).
+- The auditor's `docker-compose.yml` mounts that directory into the container as **read-only** (`/root/.bittensor/wallets:ro`).
+- Inside the container, the audit code reads `secretSeed` from the wallet JSON and builds a `Keypair` locally with `substrate-interface`.
 - `set_weights` extrinsics are signed locally and submitted to the chain RPC. The chain validates the signature against the public hotkey already in its metagraph.
-- The validator being audited never sees the seed. No third party sees it.
-- Don't commit `.env` to git. Treat it like any wallet file.
+- The validator being audited never sees your wallet. No third party sees it.
+- You only paste **wallet identifiers** (coldkey/hotkey names) into `.env` — no secret material in env vars.
 
 ### Config snippet
 
 ```bash
 # Add to your auditor's .env
 SET_WEIGHTS_ENABLED=true
-AUDITOR_HOTKEY_SECRET_SEED=0x<paste secretSeed from ~/.bittensor/wallets/<coldkey>/hotkeys/<hotkey>>
-# AUDITOR_WEIGHTS_VERSION_KEY=0   # rarely needed; override only if your subnet requires non-zero
+AUDITOR_COLDKEY_NAME=my-validator       # the directory name under ~/.bittensor/wallets/
+AUDITOR_HOTKEY_NAME=default             # the file name under .../hotkeys/
+# BITTENSOR_WALLET_DIR=~/.bittensor     # uncomment only if your wallets aren't at the default
+# AUDITOR_WEIGHTS_VERSION_KEY=0         # rarely needed; override only if your subnet requires non-zero
 ```
+
+`docker compose up -d` reads `BITTENSOR_WALLET_DIR` from `.env` (defaults to `~/.bittensor`) and bind-mounts `<that-dir>/wallets` into the container as read-only.
 
 After enabling, every audit cycle that produces at least one verified epoch will trigger a follow-up extrinsic. Look for `auditor set_weights tx submitted: 0x...` in the logs to confirm.
 
