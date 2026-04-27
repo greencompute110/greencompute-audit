@@ -2,11 +2,15 @@
 
 Independent verifier for **Green Compute** — Bittensor subnet **110 on mainnet**, **16 on testnet**.
 
-Any validator, miner, or observer can run this to check that the subnet's
-owner validator is scoring miners honestly and submitting truthful weights
-to the chain. No GPU required — this is a pure-Python replay of the
-validator's scoring math over publicly-published audit reports, cross-checked
-against on-chain SHA256 commitments.
+Any validator, miner, or observer can run this to check that the subnet's owner validator is scoring miners honestly and submitting truthful weights to the chain. No GPU required — pure-Python replay of the validator's scoring math over publicly-published audit reports, cross-checked against on-chain SHA256 commitments.
+
+## TL;DR for validators considering running this
+
+- **Default mode is read-only**, no keys required, no risk. Verify what the owner validator is doing.
+- **Optional weight-setting mode** (Chutes-style): if you're a registered validator on netuid 110, the auditor can publish its own `set_weights` extrinsic per cycle from independently replayed scoring data — keeping a dishonest owner validator in check.
+- **Wallet handling matches `btcli`**: you reference your wallet by `coldkey/hotkey` name; the wallet directory is bind-mounted **read-only** into the container; secrets never leave your host or appear in env vars.
+- **Set-and-forget**: `docker compose up -d` once → runs forever. No PM2/systemd/cron required.
+- **Hardware**: 1-2 vCPU, 2 GB RAM, 20 GB disk. CPU only. ~$5/mo VPS or Oracle's free tier.
 
 ## What this does
 
@@ -20,30 +24,44 @@ For each Bittensor epoch (every 360 blocks ≈ 72 min, same tempo on both netuid
 6. Compares the replay output against the `weight_snapshot.weights` the validator claims it used → flags discrepancies.
 7. Exits 0 (clean) / 1 (hash mismatch) / 2 (math diverges).
 
-If math diverges across multiple epochs, you have on-chain evidence of validator misbehavior. In a future release the auditor will be able to submit its own weight extrinsic to override dishonest validators.
+If math diverges across multiple epochs, you have on-chain evidence of validator misbehavior. With `SET_WEIGHTS_ENABLED=true`, the auditor will also submit its own `set_weights` extrinsic each cycle, replacing the dishonest validator's vector with one derived from publicly-verifiable raw data.
 
-## Hardware
+## Install + run
 
-- CPU: 2+ cores
-- RAM: 2 GB
-- Disk: 10 GB (audit reports are ~50 KB each)
-- **No GPU** — no inference re-run
+The auditor is built to be **set-and-forget**. `docker compose up -d` once and it stays alive across crashes and host reboots — no PM2, no systemd unit, no cron required.
 
-## Install
+### Quickstart (read-only audit, the default)
 
 ```bash
 git clone https://github.com/greencompute110/greencompute-audit.git
 cd greencompute-audit
-cp .env.example .env     # edit to point at your subtensor + validator
-docker compose up -d
+cp .env.example .env             # edit if you need non-default settings
+docker compose up -d auditor     # builds image on first run, ~30-60s
+docker compose logs -f auditor   # watch the audit cycles
 ```
 
-Or natively:
+That's the whole setup. The container runs `python -m audit --loop`, which polls every `AUDIT_INTERVAL_SECONDS` (default 300s = 5 min) and verifies any new epochs. `restart: unless-stopped` keeps it alive forever.
+
+### Update to a newer release
+
+```bash
+cd greencompute-audit
+git pull
+docker compose build auditor
+docker compose up -d --force-recreate auditor
+```
+
+### Native install (without docker)
+
+If you'd rather not use docker:
 
 ```bash
 pip install -e .
-python -m audit --help
+python -m audit --once    # one-shot
+python -m audit --loop    # continuous
 ```
+
+You'd want to wrap this in `systemd`, `pm2`, or a `screen/tmux` session for it to survive reboots. Docker compose handles that for you.
 
 ## Config
 
@@ -73,26 +91,46 @@ Two ways to get archive access:
 
 The auditor itself is CPU-only (hashing + Python scoring replay). You do NOT need 1 TB of disk on the auditor machine — the archive node can be remote. A 2 vCPU / 4 GB RAM / 40 GB disk VPS is enough (Hetzner CX22, Oracle Always-Free, etc.).
 
-## Usage
+## Operations
 
-One-shot (checks all unaudited epochs then exits):
+### Run modes
 
-```bash
-python -m audit --once
-```
+| Command | Behavior |
+|---|---|
+| `docker compose up -d auditor` | Default: long-running loop, polls every `AUDIT_INTERVAL_SECONDS` |
+| `docker compose run --rm auditor --once` | One-shot: audit all unaudited epochs since last run, exit |
+| `docker compose run --rm auditor --epoch 110-8060653` | Audit one specific epoch_id and exit |
+| `docker compose run --rm auditor --once -v` | Verbose / debug logging |
+| `docker compose logs -f auditor` | Tail logs of the long-running container |
 
-Long-running loop (polls every `AUDIT_INTERVAL_SECONDS`):
+The same flags work natively if you skipped docker: `python -m audit --once`, etc.
 
-```bash
-python -m audit --loop
-```
+### State + idempotency
 
-Check a specific epoch:
+The auditor remembers the last successfully audited block in `audit_state/last_audited_epoch` (mounted volume). On restart it picks up where it left off — no double-checking, no missed epochs as long as the container runs at least once before the chain prunes (~256 blocks, ~30 min).
 
-```bash
-python -m audit --epoch 110-1234560   # mainnet epoch at block 1234560
-python -m audit --epoch 16-1234560    # testnet
-```
+### Resource usage
+
+Steady state: ~50 MB RAM, single-digit % of one CPU core, ~5 MB/day disk for cached reports. No GPU. Suitable for the smallest VPS tier from any provider.
+
+### Recommended hosts
+
+- **Oracle Cloud Always-Free** (ARM Ampere) — 4 vCPU / 24 GB RAM / 200 GB disk, free forever
+- **Hetzner Cloud CX22** — €4/mo, 2 vCPU / 4 GB / 40 GB
+- **Contabo VPS S** — $5/mo, 4 vCPU / 8 GB / 200 GB
+
+### Auto-updating (optional)
+
+If you want the auditor to keep itself current with upstream changes, run a periodic `git pull && docker compose build && docker compose up -d --force-recreate` via:
+
+- **cron**: easiest, no extra deps. Daily check is plenty:
+  ```
+  0 4 * * *  cd /opt/greencompute-audit && git pull && docker compose build auditor && docker compose up -d --force-recreate auditor
+  ```
+- **systemd timer**: same idea, more visibility into history (`systemctl status`, `journalctl -u`).
+- **PM2** (Chutes-style): if you're already using PM2 for other services, wrap the same shell command. PM2 isn't needed just for this — `restart: unless-stopped` already handles process supervision.
+
+Skip this if you'd rather upgrade on your own cadence.
 
 ## Optional: independent weight setting (Chutes-style)
 
