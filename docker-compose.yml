@@ -9,6 +9,10 @@ services:
       NETUID: "${NETUID:-110}"
       VALIDATOR_ENDPOINT: "${VALIDATOR_ENDPOINT:-https://validator.green-compute.com}"
       AUDIT_INTERVAL_SECONDS: "${AUDIT_INTERVAL_SECONDS:-300}"
+      # Optional independent weight setting (off by default = read-only audit).
+      SET_WEIGHTS_ENABLED: "${SET_WEIGHTS_ENABLED:-false}"
+      AUDITOR_HOTKEY_SECRET_SEED: "${AUDITOR_HOTKEY_SECRET_SEED:-}"
+      AUDITOR_WEIGHTS_VERSION_KEY: "${AUDITOR_WEIGHTS_VERSION_KEY:-0}"
     command: >
       sh -lc "pip install -e . && python -m audit --loop"
     restart: unless-stopped

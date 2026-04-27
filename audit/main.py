@@ -94,10 +94,17 @@ def audit_epoch(epoch_id: str, chain: ChainClient, api: ValidatorClient) -> int:
 
 
 def audit_new_epochs(chain: ChainClient, api: ValidatorClient) -> int:
-    """Audit every unaudited epoch since last run. Returns worst exit code."""
+    """Audit every unaudited epoch since last run. Returns worst exit code.
+
+    If SET_WEIGHTS_ENABLED=true, also publishes a set_weights extrinsic
+    based on the most recent successfully audited epoch's replayed weights.
+    """
+    from audit.weights import is_enabled as set_weights_is_enabled, submit_weights
+
     last_audited = _read_last_audited_epoch()
     reports = api.list_reports()
     worst = EXIT_CLEAN
+    last_clean_epoch_id: str | None = None
     for r in sorted(reports, key=lambda x: x["epoch_end_block"]):
         end_block = r["epoch_end_block"]
         if last_audited is not None and end_block <= last_audited:
@@ -107,6 +114,25 @@ def audit_new_epochs(chain: ChainClient, api: ValidatorClient) -> int:
             worst = code
         if code == EXIT_CLEAN:
             _write_last_audited_epoch(end_block)
+            last_clean_epoch_id = r["epoch_id"]
+
+    # After auditing, optionally publish independent weights based on the
+    # most recent verified epoch. Only fires when explicitly opted-in via
+    # SET_WEIGHTS_ENABLED=true AND AUDITOR_HOTKEY_SECRET_SEED is set.
+    if last_clean_epoch_id and set_weights_is_enabled():
+        try:
+            report = api.get_report(last_clean_epoch_id)
+            replayed = replay_scoring(report["report_json"])
+            if replayed:
+                submit_weights(
+                    subtensor_url=chain.subtensor_url,
+                    netuid=chain.netuid,
+                    weights_by_hotkey=replayed,
+                )
+            else:
+                logger.info("no replayed weights to publish for epoch %s", last_clean_epoch_id)
+        except Exception:
+            logger.exception("weight publish step failed for epoch %s", last_clean_epoch_id)
     return worst
 
 

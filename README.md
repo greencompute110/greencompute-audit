@@ -94,6 +94,46 @@ python -m audit --epoch 110-1234560   # mainnet epoch at block 1234560
 python -m audit --epoch 16-1234560    # testnet
 ```
 
+## Optional: independent weight setting (Chutes-style)
+
+By default this auditor is **purely read-only** — it verifies SHA256 anchors, signatures, and replays scoring math. No keys are needed, nothing is transmitted, nothing is signed. Many auditors will run it in this mode forever.
+
+For validators who want to push their **own** weight vector to the chain based on independently replayed audit data — same pattern Chutes uses on subnet 64 — flip `SET_WEIGHTS_ENABLED=true` and provide your validator hotkey's seed. The auditor then publishes a `set_weights` extrinsic each cycle using the replayed scores. This shadows a dishonest validator's weight vector with one derived from publicly verifiable raw data.
+
+### Requirements when enabling weight setting
+
+1. Your hotkey is **registered as a validator on the netuid** (mainnet 110 or testnet 16). `btcli subnet register --netuid 110 --wallet.name <coldkey> --wallet.hotkey <hotkey> --subtensor.network finney`.
+2. Your hotkey has enough stake to receive a validator permit. Check with `btcli subnet hyperparameters --netuid 110 --subtensor.network finney` (`min_allowed_weights` etc).
+3. The hotkey's `secretSeed` is available as `AUDITOR_HOTKEY_SECRET_SEED` in the auditor's `.env`.
+
+### How keys are handled (security)
+
+**Nothing is transmitted off your box.** Same model as Chutes' `audit.py`:
+
+- The `secretSeed` lives in your local `.env` file (or container env). Read at runtime by `substrate-interface` to construct a Keypair locally.
+- `set_weights` extrinsics are signed locally and submitted to the chain RPC. The chain validates the signature against the public hotkey already in its metagraph.
+- The validator being audited never sees the seed. No third party sees it.
+- Don't commit `.env` to git. Treat it like any wallet file.
+
+### Config snippet
+
+```bash
+# Add to your auditor's .env
+SET_WEIGHTS_ENABLED=true
+AUDITOR_HOTKEY_SECRET_SEED=0x<paste secretSeed from ~/.bittensor/wallets/<coldkey>/hotkeys/<hotkey>>
+# AUDITOR_WEIGHTS_VERSION_KEY=0   # rarely needed; override only if your subnet requires non-zero
+```
+
+After enabling, every audit cycle that produces at least one verified epoch will trigger a follow-up extrinsic. Look for `auditor set_weights tx submitted: 0x...` in the logs to confirm.
+
+### When to leave it disabled
+
+- You don't have a validator registration on the netuid (most operators)
+- You only want to detect cheating, not counter-set weights
+- You're running the auditor as a public good / observatory
+
+In any of those cases, the default `SET_WEIGHTS_ENABLED=false` does the right thing.
+
 ## Exit codes
 
 - `0` — all audited epochs pass
