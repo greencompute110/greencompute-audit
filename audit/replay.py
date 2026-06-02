@@ -50,10 +50,23 @@ def _consistency_penalty(results: list[dict]) -> float:
     return 1.0
 
 
+# Must match the validator (greencompute_validator.domain.scoring): only the
+# most recent N *signed* probes count toward the signature-diversity check, so
+# a historical signature scheme (pre de-nonce) ages out instead of pinning the
+# penalty forever.
+_FRAUD_SIGNATURE_WINDOW = 10
+
+
 def _fraud_penalty(results: list[dict]) -> float:
     if not results:
         return 1.0
-    sigs = {r.get("benchmark_signature") for r in results if r.get("benchmark_signature")}
+    # ISO-8601 observed_at strings sort chronologically, matching the
+    # validator's datetime ordering, so both pick the same recent window.
+    signed = sorted(
+        (r for r in results if r.get("benchmark_signature")),
+        key=lambda r: r.get("observed_at") or "",
+    )
+    sigs = {r.get("benchmark_signature") for r in signed[-_FRAUD_SIGNATURE_WINDOW:]}
     signature_penalty = 0.75 if len(sigs) > 1 else 1.0
     proxy_penalty = 0.4 if any(r.get("proxy_suspected") for r in results) else 1.0
     readiness_penalty = max(0.2, 1.0 - (sum(r.get("readiness_failures", 0) for r in results) * 0.03))
