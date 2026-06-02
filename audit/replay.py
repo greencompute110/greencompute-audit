@@ -52,7 +52,7 @@ def _consistency_penalty(results: list[dict]) -> float:
 
 def _fraud_penalty(results: list[dict]) -> float:
     if not results:
-        return 0.0
+        return 1.0
     sigs = {r.get("benchmark_signature") for r in results if r.get("benchmark_signature")}
     signature_penalty = 0.75 if len(sigs) > 1 else 1.0
     proxy_penalty = 0.4 if any(r.get("proxy_suspected") for r in results) else 1.0
